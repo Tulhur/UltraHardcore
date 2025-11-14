@@ -104,6 +104,16 @@ function UHC_XPBar:Initialize()
                         formatNumberWithCommas(UHC_XPBar.restedXP)
                     )
                 end
+                -- Append approximation of how many similar XP gains are left to level up
+                if UHC_XPBar.lastGain and UHC_XPBar.lastGain > 0 then
+                    local remaining = (UHC_XPBar.maxXP or 0) - (UHC_XPBar.currentXP or 0)
+                    if remaining > 0 then
+                        local approxLeft = math.ceil(remaining / UHC_XPBar.lastGain)
+                        -- Pluralize 'gain' correctly
+                        local gainWord = approxLeft == 1 and "gain" or "gains"
+                        displayText = displayText .. string.format(" | approx. %d exp. %s left", approxLeft, gainWord)
+                    end
+                end
                 GameTooltip:SetText(displayText)
             end
             GameTooltip:Show()
@@ -135,6 +145,13 @@ function UHC_XPBar:UpdateXPBar()
     local maxXP = UnitXPMax("player")
     local restedXP = GetXPExhaustion()
     local level = UnitLevel("player")
+
+    -- Track last experience gain by comparing to the previously stored XP values.
+    -- Only compute an estimate when we actually have prior XP stored (avoid showing
+    -- an estimate immediately after a reload where previous values are unknown).
+    local previousXP = UHC_XPBar.currentXP
+    local previousMax = UHC_XPBar.maxXP
+    local hasPrevious = (previousXP ~= nil)
 
 
     -- Get the actual frame width
@@ -175,6 +192,22 @@ function UHC_XPBar:UpdateXPBar()
     UHC_XPBar:SetBarColor()
 
     -- Store XP info for tooltip
+    -- Calculate last gain only if we have previous data to compare against.
+    if hasPrevious then
+        -- Calculate last gain: if XP increased since last update, that's the gain.
+        -- If XP decreased (level up), compute gain across the level boundary.
+        if currentXP > previousXP then
+            UHC_XPBar.lastGain = currentXP - previousXP
+        elseif currentXP < previousXP then
+            -- Leveled up; previousMax should represent the old max XP for previous level.
+            if previousMax and previousMax > 0 then
+                UHC_XPBar.lastGain = (previousMax - previousXP) + currentXP
+            else
+                UHC_XPBar.lastGain = currentXP
+            end
+        end
+    end
+
     UHC_XPBar.currentXP = currentXP
     UHC_XPBar.maxXP = maxXP
     UHC_XPBar.xpPercent = UHC_XPBar:GetPercentage(currentXP, maxXP)
